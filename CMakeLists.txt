@@ -1,21 +1,19 @@
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
-project(histogram_equalization LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.18)
 
-set(CMAKE_CXX_STANDARD 17)
+project(histogram_equalization LANGUAGES CUDA CXX)
 
-# Find matplotlib package
-find_package(Python COMPONENTS Development NumPy)
 
-# Check if the package is found
-if (Python_FOUND)
-    include_directories(${Python_INCLUDE_DIRS})
-    include_directories(${Python_NumPy_INCLUDE_DIRS})
+# Set executable name
+add_executable(histogram_equalization src/main.cu)
 
-    # source to build
-    add_executable(histogram_equalization src/main.cpp)
+# Set include directories
+target_include_directories(histogram_equalization PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
-    # Link against the required libraries
-    target_link_libraries(histogram_equalization PRIVATE ${Python_LIBRARIES})
-else()
-    message(FATAL_ERROR "Matplotlib not found. Please make sure it is installed.")
-endif()
+# Set compiler options for CUDA
+target_compile_options(histogram_equalization PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+# Set compiler features
+target_compile_features(histogram_equalization PUBLIC cxx_std_11)
+
+# Set NVCC flags
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math")
