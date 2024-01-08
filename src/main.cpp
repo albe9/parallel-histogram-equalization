@@ -2,17 +2,15 @@
 #include <filesystem>
 #include "utils.h"
 
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
 
 // TODO wrap this function into another one that allows to repeat clahe on the same image , also add checking radius and dimensions
-void clahe(uint8_t* in_image, uint8_t* out_image, int width, int height, int clip_limit, int tileRadius)
+void clahe(uint8_t* in_image, uint8_t* out_image, uint32_t width, uint32_t height, uint32_t clip_limit, uint32_t tileRadius)
 {
     //Border mirroring
     uint32_t mirrored_width = 2 * tileRadius + width,
@@ -21,68 +19,7 @@ void clahe(uint8_t* in_image, uint8_t* out_image, int width, int height, int cli
     uint8_t* in_mirrored_image = (uint8_t*)malloc((mirrored_height) * (mirrored_width) * sizeof(uint8_t)); 
     memset(in_mirrored_image, 0, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
 
-    for(uint32_t pixel_idx_y = 0; pixel_idx_y < mirrored_height; pixel_idx_y++)
-    {
-        for(uint32_t pixel_idx_x = 0; pixel_idx_x < mirrored_width; pixel_idx_x++)
-        {
-            uint32_t abs_pixel_idx = pixel_idx_y * mirrored_width + pixel_idx_x;
-
-            // Copy the image if pixel is inside of border
-            if(pixel_idx_y >= tileRadius && pixel_idx_y < (mirrored_height - tileRadius) && 
-               pixel_idx_x >= tileRadius && pixel_idx_x < (mirrored_width- tileRadius) )
-            {
-                in_mirrored_image[abs_pixel_idx] = in_image[(pixel_idx_y - tileRadius) * width + (pixel_idx_x - tileRadius)];
-            }
-            else
-            {
-                // Handle different border location and mirror the pixel
-                if(pixel_idx_y < tileRadius)
-                {
-                    if(pixel_idx_x < tileRadius)    // TOP-LEFT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(tileRadius - pixel_idx_y - 1) * width + (tileRadius - pixel_idx_x - 1)];
-                    }
-                    else if(pixel_idx_x < mirrored_width - tileRadius)    // TOP-CENTER
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(tileRadius - pixel_idx_y - 1) * width + (pixel_idx_x - tileRadius)];
-                    }
-                    else    // TOP-RIGHT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(tileRadius - pixel_idx_y - 1) * width + (2 * mirrored_width - 3 * tileRadius - pixel_idx_x - 1)];
-                    }
-                }
-                else if(pixel_idx_y < (mirrored_height - tileRadius))
-                {
-                    if(pixel_idx_x < tileRadius)    // CENTER-LEFT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(pixel_idx_y - tileRadius) * width + (tileRadius - pixel_idx_x - 1)];
-                    }
-                    else    // CENTER-RIGHT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(pixel_idx_y - tileRadius) * width + (2 * mirrored_width - 3 * tileRadius - pixel_idx_x - 1)];
-                    }
-                }
-                else
-                {
-                    if(pixel_idx_x < tileRadius)    // BOTTOM-LEFT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(2 * mirrored_height - 3 * tileRadius - pixel_idx_y - 1) * width + (tileRadius - pixel_idx_x - 1)];
-                    }
-                    else if(pixel_idx_x < mirrored_width - tileRadius)    // BOTTOM-CENTER
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(2 * mirrored_height - 3 * tileRadius - pixel_idx_y - 1) * width + (pixel_idx_x - tileRadius)];
-                    }
-                    else    // BOTTOM-RIGHT
-                    {
-                        in_mirrored_image[abs_pixel_idx] = in_image[(2 * mirrored_height - 3 * tileRadius - pixel_idx_y - 1) * width + (2 * mirrored_width - 3 * tileRadius - pixel_idx_x - 1)];
-                    }
-                }
-            }
-
-            // std::cout << (int)in_mirrored_image[abs_pixel_idx] << " ";
-        }
-        // std::cout << "\n";
-    }
+    mirror_img_borders(in_mirrored_image, in_image, mirrored_height, mirrored_width, height, width, tileRadius);
 
     float pixel_for_window = (2 * tileRadius + 1) * (2 * tileRadius + 1);
     // Iterate through each pixel (need offset because of the mirrored border)
@@ -164,9 +101,8 @@ void clahe(uint8_t* in_image, uint8_t* out_image, int width, int height, int cli
     }
 }
 
-int main()
+void cpu_clahe()
 {
-
     // std::string in_img_path = "./../media/test2.jpg";
     // std::string out_img_path = "./../media/test2_output.jpg";
 
@@ -186,23 +122,8 @@ int main()
         std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
     }
 
-
     uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
     memset(output_img, 0, width * height * sizeof(uint8_t));
-
-    // Convert to grayscale
-    // for (int y = 0; y < height; y++) {
-    //     for (int x = 0; x < width; x++) {
-    //         // Convert RGB to grayscale using the formula: grayscale = 0.299*R + 0.587*G + 0.114*B
-    //         int index = (y * width + x) * channels;
-    //         output_img[y * width + x] = static_cast<uint8_t>(
-    //             0.299 * input_img[index] +
-    //             0.587 * input_img[index + 1] +
-    //             0.114 * input_img[index + 2]
-    //         );
-    //     }
-    // }
-
 
     // uint8_t debug_img[] =
     // {
@@ -221,9 +142,15 @@ int main()
     // clahe(debug_img, output_img, 3, 6, 2, 1);
 
 
-    plotHistImg(input_img, width, height);
+    // plotHistImg(input_img, width, height);
     clahe(input_img, output_img, width, height, 4, 20);
-    plotHistImg(output_img, width, height);
+    // plotHistImg(output_img, width, height);
 
     stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
+}
+
+int main()
+{
+    cpu_clahe();
+    return(0);
 }
