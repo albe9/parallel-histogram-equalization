@@ -1,2 +1,5 @@
 /.vscode
 /build
+/media/input/*
+/media/output/*
+*.zip
