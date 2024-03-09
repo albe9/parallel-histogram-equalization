@@ -1,5 +1,7 @@
 #define SERVER
 #include "utils.h"
+#include <fstream>
+#include <map>
 #include <cuda_runtime.h>
 #include <chrono>
 
@@ -60,7 +62,7 @@ __global__ void clahe_kernel(uint8_t* in_image, uint8_t* out_image, uint32_t wid
     if(center_pixel_y >= tileRadius && center_pixel_y < mirrored_height - tileRadius && center_pixel_x >= tileRadius && center_pixel_x < mirrored_width - tileRadius)
     {
         // Calculate the histogram for the current tile
-        uint32_t histogram[GRAYSCALE_RANGE] = {0};
+        uint16_t histogram[GRAYSCALE_RANGE] = {0};
         uint32_t start_tile_y = center_pixel_y - tileRadius, 
                  end_tile_y = center_pixel_y + tileRadius,
                  start_tile_x = center_pixel_x - tileRadius, 
@@ -100,7 +102,7 @@ __global__ void clahe_kernel(uint8_t* in_image, uint8_t* out_image, uint32_t wid
         }
 
         // Distribute the excess counts uniformly among all histogram bins
-        uint32_t tile_cdf[GRAYSCALE_RANGE] = {0}, cdf_counter = 0;
+        uint32_t cdf_counter = 0;
         uint32_t bin_increment = excess / GRAYSCALE_RANGE;
         uint32_t remainder = excess % GRAYSCALE_RANGE;
         for(uint32_t level = 0; level < GRAYSCALE_RANGE; level++)
@@ -112,18 +114,18 @@ __global__ void clahe_kernel(uint8_t* in_image, uint8_t* out_image, uint32_t wid
             histogram[level]++;
         }
 
-        // calculate tile cdf
+        // calculate tile cdf (saving cdf inside histogram array to reduce local memory)
         uint32_t min_cdf = 0;
         for(uint32_t level = 0; level < GRAYSCALE_RANGE; level++)
         {
             cdf_counter += histogram[level];
-            tile_cdf[level] = cdf_counter;
+            histogram[level] = cdf_counter;
             if(min_cdf == 0 && cdf_counter != 0) min_cdf = cdf_counter;
         }
 
         // Apply the contrast-limited histogram equalization to the main pixel
         uint32_t main_pixel_abs_pos = center_pixel_y * mirrored_width + center_pixel_x;
-        uint8_t new_pixel_value = std::round(static_cast<double>(tile_cdf[in_image[main_pixel_abs_pos]] - min_cdf) / (pixel_for_window - min_cdf) * (GRAYSCALE_RANGE - 1));
+        uint8_t new_pixel_value = std::round(static_cast<double>(histogram[in_image[main_pixel_abs_pos]] - min_cdf) / (pixel_for_window - min_cdf) * (GRAYSCALE_RANGE - 1));
         out_image[(center_pixel_y - tileRadius) * width + (center_pixel_x - tileRadius)] = new_pixel_value;
     }
 }
@@ -266,122 +268,6 @@ __global__ void clahe_kernel_shared_mem(uint8_t* in_image, uint8_t* out_image, u
     }
 }
 
-void parallel_clahe(uint32_t clip_limit, uint32_t tileRadius, std::string in_img_path , std::string out_img_path)
-{
-    int width, height, channels;
-    uint8_t *input_img = stbi_load(in_img_path.c_str(), &width, &height, &channels, 0);
-    if(input_img == NULL) {
-        std::cout << "Error loading image\n";
-    }
-    else
-    {
-        // std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
-    }
-
-    uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
-    memset(output_img, 0, width * height * sizeof(uint8_t));
-
-    //Border mirroring
-    uint32_t mirrored_width = 2 * tileRadius + width,
-             mirrored_height = 2 * tileRadius + height;
-
-    uint8_t* in_mirrored_image = (uint8_t*)malloc((mirrored_height) * (mirrored_width) * sizeof(uint8_t)); 
-    memset(in_mirrored_image, 0, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
-
-    mirror_img_borders(in_mirrored_image, input_img, mirrored_height, mirrored_width, height, width, tileRadius);
-
-    // CUDA device imgs
-    uint8_t* gpu_input_img;
-    uint8_t* gpu_output_img;
-
-    // Allocate GPU memory
-    cudaMalloc((void**)&gpu_input_img, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
-    cudaMalloc((void**)&gpu_output_img, width * height * sizeof(uint8_t));
-
-    // Copy data from host to GPU
-    cudaMemcpy(gpu_input_img, in_mirrored_image, (mirrored_height) * (mirrored_width) * sizeof(uint8_t), cudaMemcpyHostToDevice);
-
-    // Launch the kernel
-    dim3 blockDim(BLOCK_DIM_X, BLOCK_DIM_Y);
-    dim3 gridDim((mirrored_width + blockDim.x - 1) / blockDim.x, (mirrored_height + blockDim.y - 1) / blockDim.y);
-
-    clahe_kernel<<<gridDim, blockDim>>>(gpu_input_img, gpu_output_img, width, height, clip_limit, tileRadius);
-    cudaDeviceSynchronize();
-    
-    cudaMemcpy(output_img, gpu_output_img, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost);
-
-    // Free GPU memory
-    cudaFree(gpu_input_img);
-    cudaFree(gpu_output_img);
-
-    stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
-}
-
-void parallel_clahe_shared_mem(uint32_t clip_limit, uint32_t tileRadius, std::string in_img_path , std::string out_img_path)
-{
-    int width, height, channels;
-    uint8_t *input_img = stbi_load(in_img_path.c_str(), &width, &height, &channels, 0);
-    if(input_img == NULL) {
-        std::cout << "Error loading image\n";
-    }
-    else
-    {
-        // std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
-    }
-
-    uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
-    memset(output_img, 0, width * height * sizeof(uint8_t));
-
-    //Border mirroring
-    uint32_t mirrored_width = 2 * tileRadius + width,
-             mirrored_height = 2 * tileRadius + height;
-
-    uint8_t* in_mirrored_image = (uint8_t*)malloc((mirrored_height) * (mirrored_width) * sizeof(uint8_t)); 
-    memset(in_mirrored_image, 0, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
-
-    mirror_img_borders(in_mirrored_image, input_img, mirrored_height, mirrored_width, height, width, tileRadius);
-
-    // CUDA device imgs
-    uint8_t* gpu_input_img;
-    uint8_t* gpu_output_img; 
-
-    // Allocate GPU memory
-    cudaMalloc((void**)&gpu_input_img, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
-    cudaMalloc((void**)&gpu_output_img, width * height * sizeof(uint8_t));
-
-    // Copy data from host to GPU
-    cudaMemcpy(gpu_input_img, in_mirrored_image, (mirrored_height) * (mirrored_width) * sizeof(uint8_t), cudaMemcpyHostToDevice);
-
-    // Launch the kernel
-    dim3 blockDim(BLOCK_DIM_X, BLOCK_DIM_Y);
-    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
-
-    uint32_t n_pixel_to_load_4_thread = ((2 * tileRadius + BLOCK_DIM_X) * (2 * tileRadius + BLOCK_DIM_Y ))/ (BLOCK_DIM_X * BLOCK_DIM_Y); 
-
-    // TESTING_________________________________
-    // for(uint32_t pixel_idx_y = 4; pixel_idx_y < 14; pixel_idx_y++)
-    // {
-    //     for(uint32_t pixel_idx_x = 0; pixel_idx_x < 10; pixel_idx_x ++)
-    //     {
-    //         printf("%d ", in_mirrored_image[pixel_idx_y * mirrored_width + pixel_idx_x]);
-    //     }
-    //     printf("\n");
-    // }
-    // printf("\n");
-    //__________________________________________
-
-    clahe_kernel_shared_mem<<<gridDim, blockDim, (2 * tileRadius + BLOCK_DIM_X) * (2 * tileRadius + BLOCK_DIM_Y ) * sizeof(uint8_t) >>>(gpu_input_img, gpu_output_img, width, height, clip_limit, tileRadius, n_pixel_to_load_4_thread);
-    cudaDeviceSynchronize();
-    
-    cudaMemcpy(output_img, gpu_output_img, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost);
-
-    // Free GPU memory
-    cudaFree(gpu_input_img);
-    cudaFree(gpu_output_img);
-
-    stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
-}
-
 void cpu_clahe(uint8_t* in_image, uint8_t* out_image, uint32_t width, uint32_t height, uint32_t clip_limit, uint32_t tileRadius)
 {
     uint32_t mirrored_width = 2 * tileRadius + width,
@@ -491,11 +377,8 @@ void cpu_clahe(uint8_t* in_image, uint8_t* out_image, uint32_t width, uint32_t h
     }
 }
 
-void single_core_clahe(uint32_t clip_limit, uint32_t tileRadius)
+void parallel_clahe(uint32_t clip_limit, uint32_t tileRadius, std::string in_img_path , std::string out_img_path, bool save_img)
 {
-    std::string in_img_path = "./../media/test3.jpg";
-    std::string out_img_path = "./../media/test3_output_cpu.jpg";
-
     int width, height, channels;
     uint8_t *input_img = stbi_load(in_img_path.c_str(), &width, &height, &channels, 0);
     if(input_img == NULL) {
@@ -503,7 +386,125 @@ void single_core_clahe(uint32_t clip_limit, uint32_t tileRadius)
     }
     else
     {
-        std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
+        // std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
+    }
+
+    uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
+    memset(output_img, 0, width * height * sizeof(uint8_t));
+
+    //Border mirroring
+    uint32_t mirrored_width = 2 * tileRadius + width,
+             mirrored_height = 2 * tileRadius + height;
+
+    uint8_t* in_mirrored_image = (uint8_t*)malloc((mirrored_height) * (mirrored_width) * sizeof(uint8_t)); 
+    memset(in_mirrored_image, 0, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
+
+    mirror_img_borders(in_mirrored_image, input_img, mirrored_height, mirrored_width, height, width, tileRadius);
+
+    // CUDA device imgs
+    uint8_t* gpu_input_img;
+    uint8_t* gpu_output_img;
+
+    // Allocate GPU memory
+    cudaMalloc((void**)&gpu_input_img, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
+    cudaMalloc((void**)&gpu_output_img, width * height * sizeof(uint8_t));
+
+    // Copy data from host to GPU
+    cudaMemcpy(gpu_input_img, in_mirrored_image, (mirrored_height) * (mirrored_width) * sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+    // Launch the kernel
+    dim3 blockDim(BLOCK_DIM_X, BLOCK_DIM_Y);
+    dim3 gridDim((mirrored_width + blockDim.x - 1) / blockDim.x, (mirrored_height + blockDim.y - 1) / blockDim.y);
+
+    clahe_kernel<<<gridDim, blockDim>>>(gpu_input_img, gpu_output_img, width, height, clip_limit, tileRadius);
+    cudaDeviceSynchronize();
+    
+    cudaMemcpy(output_img, gpu_output_img, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost);
+
+    // Free GPU memory
+    cudaFree(gpu_input_img);
+    cudaFree(gpu_output_img);
+
+    if(save_img)
+    {
+        stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
+    }
+}
+
+void parallel_clahe_shared_mem(uint32_t clip_limit, uint32_t tileRadius, std::string in_img_path , std::string out_img_path, bool save_img)
+{
+    int width, height, channels;
+    uint8_t *input_img = stbi_load(in_img_path.c_str(), &width, &height, &channels, 0);
+    if(input_img == NULL) {
+        std::cout << "Error loading image\n";
+    }
+    else
+    {
+        // std::cout << "width: " <<width << " height: " << height << " channels: " << channels << "\n";
+    }
+
+    uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
+    memset(output_img, 0, width * height * sizeof(uint8_t));
+
+    //Border mirroring
+    uint32_t mirrored_width = 2 * tileRadius + width,
+             mirrored_height = 2 * tileRadius + height;
+
+    uint8_t* in_mirrored_image = (uint8_t*)malloc((mirrored_height) * (mirrored_width) * sizeof(uint8_t)); 
+    memset(in_mirrored_image, 0, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
+
+    mirror_img_borders(in_mirrored_image, input_img, mirrored_height, mirrored_width, height, width, tileRadius);
+
+    // CUDA device imgs
+    uint8_t* gpu_input_img;
+    uint8_t* gpu_output_img; 
+
+    // Allocate GPU memory
+    cudaMalloc((void**)&gpu_input_img, (mirrored_height) * (mirrored_width) * sizeof(uint8_t));
+    cudaMalloc((void**)&gpu_output_img, width * height * sizeof(uint8_t));
+
+    // Copy data from host to GPU
+    cudaMemcpy(gpu_input_img, in_mirrored_image, (mirrored_height) * (mirrored_width) * sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+    // Launch the kernel
+    dim3 blockDim(BLOCK_DIM_X, BLOCK_DIM_Y);
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
+
+    uint32_t n_pixel_to_load_4_thread = ((2 * tileRadius + BLOCK_DIM_X) * (2 * tileRadius + BLOCK_DIM_Y ))/ (BLOCK_DIM_X * BLOCK_DIM_Y); 
+
+    // TESTING_________________________________
+    // for(uint32_t pixel_idx_y = 4; pixel_idx_y < 14; pixel_idx_y++)
+    // {
+    //     for(uint32_t pixel_idx_x = 0; pixel_idx_x < 10; pixel_idx_x ++)
+    //     {
+    //         printf("%d ", in_mirrored_image[pixel_idx_y * mirrored_width + pixel_idx_x]);
+    //     }
+    //     printf("\n");
+    // }
+    // printf("\n");
+    //__________________________________________
+
+    clahe_kernel_shared_mem<<<gridDim, blockDim, (2 * tileRadius + BLOCK_DIM_X) * (2 * tileRadius + BLOCK_DIM_Y ) * sizeof(uint8_t) >>>(gpu_input_img, gpu_output_img, width, height, clip_limit, tileRadius, n_pixel_to_load_4_thread);
+    cudaDeviceSynchronize();
+    
+    cudaMemcpy(output_img, gpu_output_img, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost);
+
+    // Free GPU memory
+    cudaFree(gpu_input_img);
+    cudaFree(gpu_output_img);
+
+    if(save_img)
+    {
+        stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
+    }
+}
+
+void single_core_clahe(uint32_t clip_limit, uint32_t tileRadius, std::string in_img_path , std::string out_img_path, bool save_img)
+{
+    int width, height, channels;
+    uint8_t *input_img = stbi_load(in_img_path.c_str(), &width, &height, &channels, 0);
+    if(input_img == NULL) {
+        std::cout << "Error loading image\n";
     }
 
     uint8_t *output_img = (uint8_t* )malloc(width * height * sizeof(uint8_t));
@@ -520,113 +521,70 @@ void single_core_clahe(uint32_t clip_limit, uint32_t tileRadius)
 
     cpu_clahe(in_mirrored_image, output_img, width, height, clip_limit, tileRadius);
 
-    stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
+    if(save_img)
+    {
+        stbi_write_png(out_img_path.c_str(), width, height, 1, output_img, width);
+    }
 }
 
-void benchmark()
+void benchmarks(benchmark_config config, std::string json_out_folder)
 {
-    uint32_t iter_n = 100;
-
-    auto start_time = std::chrono::high_resolution_clock::now();
-    for(uint32_t iter_idx=0; iter_idx<iter_n; iter_idx++)
+    // CPU
+    if(config.cpu_version.first)
     {
-        if(iter_idx == iter_n - 1)
-        {
-            std::cout << "Iteration : ["<< iter_idx + 1 << "/" << iter_n << "]\n";
-        }
-        else
-        {
-            std::cout << "Iteration : ["<< iter_idx + 1 << "/" << iter_n << "]" << std::flush << "\r";
-        }
-        // parallel_clahe(4, 40, "test3.jpg");
+        std::cout << "CPU BENCHMARKS:\n";
+        make_single_benchmark("cpu_version", "cpu_", json_out_folder + "cpu.json", config.cpu_version.second, config.iter_for_reliability);
     }
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-    std::cout << "Gpu version time elapsed : " << elapsed_time.count() << "\n";
 
-    start_time = std::chrono::high_resolution_clock::now();
-    for(uint32_t iter_idx=0; iter_idx<iter_n; iter_idx++)
+    // GPU
+    if(config.gpu_version.first)
     {
-        if(iter_idx == iter_n - 1)
-        {
-            std::cout << "Iteration : ["<< iter_idx + 1 << "/" << iter_n << "]\n";
-        }
-        else
-        {
-            std::cout << "Iteration : ["<< iter_idx + 1 << "/" << iter_n << "]" << std::flush << "\r";
-        }
-        // parallel_clahe_shared_mem(4, 40, "test3.jpg");
+        std::cout << "GPU BENCHMARKS:\n";
+        make_single_benchmark("gpu_version", "gpu_", json_out_folder + "gpu.json", config.gpu_version.second, config.iter_for_reliability);
     }
-    end_time = std::chrono::high_resolution_clock::now();
-    elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-    std::cout << "Gpu shared memory version time elapsed : " << elapsed_time.count() << "\n";
 
+    // GPU shared memory
+    if(config.gpu_mem_shared_version.first)
+    {
+        std::cout << "GPU SHARED MEMORY BENCHMARKS:\n";
+        make_single_benchmark("gpu_mem_shared_version", "gpu_mem_shared_", json_out_folder + "gpu_mem_shared.json", config.gpu_mem_shared_version.second, config.iter_for_reliability);
+    }
 
 }
 
 int main()
 {
-    // CPU
-    auto start_time = std::chrono::high_resolution_clock::now();
-    // single_core_clahe(4, 20);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-    // std::cout << "Cpu version time elapsed : " << elapsed_time.count() << "\n";
-
-    uint32_t img_count = std::distance(fs::directory_iterator("./../media/input/grayscale_images/"), fs::directory_iterator{});
-    uint32_t benchmark_limit = 1000;
-
-    // GPU
-    start_time = std::chrono::high_resolution_clock::now();
-    uint32_t iter_counter = 0;
-    for (const auto& entry : fs::directory_iterator("./../media/input/grayscale_images/")) {
-            std::string img_name =  entry.path().filename().string();
-            std::string in_img_path = "./../media/input/grayscale_images/" + img_name;
-            std::string out_img_path = "./../media/output/gpu_" + img_name;
-            parallel_clahe(4, 40, in_img_path, out_img_path);
-            if(iter_counter == img_count - 1)
-            {
-                std::cout << "Iteration : ["<< iter_counter + 1 << "/" << img_count << "]\n";
-            }
-            else
-            {
-                std::cout << "Iteration : ["<< iter_counter + 1 << "/" << img_count << "]" << std::flush << "\r";
-            }
-            iter_counter++;
-            if(iter_counter >= benchmark_limit)break;
-    }
-    end_time = std::chrono::high_resolution_clock::now();
-    elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-    std::cout << "Gpu version time elapsed : " << elapsed_time.count() << "\n";
-
-    //GPU shared memory
-    start_time = std::chrono::high_resolution_clock::now();
-    iter_counter = 0;
-    for (const auto& entry : fs::directory_iterator("./../media/input/grayscale_images/")) {
-            std::string img_name =  entry.path().filename().string();
-            std::string in_img_path = "./../media/input/grayscale_images/" + img_name;
-            std::string out_img_path = "./../media/output/gpu_shared_mem_" + img_name;
-            parallel_clahe_shared_mem(4, 40, in_img_path, out_img_path);
-            if(iter_counter == img_count - 1)
-            {
-                std::cout << "Iteration : ["<< iter_counter + 1 << "/" << img_count << "]\n";
-            }
-            else
-            {
-                std::cout << "Iteration : ["<< iter_counter + 1 << "/" << img_count << "]" << std::flush << "\r";
-            }
-            iter_counter++;
-            if(iter_counter >= benchmark_limit)break;
-    }
-    end_time = std::chrono::high_resolution_clock::now();
-    elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-    std::cout << "Gpu shared memory version time elapsed : " << elapsed_time.count() << "\n";
     
-    // benchmark();
+
+    benchmark_config config1={
+        .iter_for_reliability = 5,
+        .cpu_version =            {false, {}},
+        .gpu_version =            {true, {1, 10, 100, 1000}},
+        .gpu_mem_shared_version = {true, {1, 10, 100, 1000}}
+    };
+    
+    benchmark_config config2={
+            .iter_for_reliability = 5,
+            .cpu_version =            {true, {1, 10, 100, 1000}},
+            .gpu_version =            {false, {}},
+            .gpu_mem_shared_version = {false, {}}
+        };
+
+    benchmarks(config1, "./../benchmarks/benchmark_2/");
+
+    // auto start_time = std::chrono::high_resolution_clock::now();
+    // auto end_time = std::chrono::high_resolution_clock::now();
+    // auto elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
 
     // start_time = std::chrono::high_resolution_clock::now();
-    // parallel_clahe_shared_mem(4,20, "./../media/test_img/test3.jpg", "./../media/test_img/test3_output_cuda_shared.jpg");
+    // parallel_clahe_shared_mem(4,40, "./../media/test_img/test3.jpg", "./../media/test_img/test3_output_cuda_shared.jpg", true);
     // end_time = std::chrono::high_resolution_clock::now();
     // elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
     // std::cout << "Gpu shared memory version time elapsed : " << elapsed_time.count() << "\n";
+
+    // start_time = std::chrono::high_resolution_clock::now();
+    // parallel_clahe(4,40, "./../media/test_img/test3.jpg", "./../media/test_img/test3_output_cuda.jpg", true);
+    // end_time = std::chrono::high_resolution_clock::now();
+    // elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
+    // std::cout << "Gpu version time elapsed : " << elapsed_time.count() << "\n";
 }
