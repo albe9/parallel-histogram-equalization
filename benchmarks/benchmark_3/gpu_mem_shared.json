@@ -1,0 +1,27 @@
+{
+	"gpu_mem_shared_version": {
+		"iter_for_reliability": 3,
+		"test_performed": [
+			{
+				"img_n": 10,
+				"tile_size": 10,
+				"elapsed_times": [0.772983,0.394391,0.396725]
+			},
+			{
+				"img_n": 100,
+				"tile_size": 10,
+				"elapsed_times": [3.46639,1.7018,1.42948]
+			},
+			{
+				"img_n": 1000,
+				"tile_size": 10,
+				"elapsed_times": [13.0256,11.955,11.9311]
+			},
+			{
+				"img_n": 2500,
+				"tile_size": 10,
+				"elapsed_times": [53.0516,55.2413,55.9129]
+			}
+		]
+	}
+}

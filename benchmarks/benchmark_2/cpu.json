@@ -1,0 +1,37 @@
+{
+	"cpu_version": {
+		"iter_for_reliability": 3,
+		"test_performed": [
+			{
+				"img_n": 1,
+				"tile_size": 10,
+				"elapsed_times": [0.488964,0.488003,0.402038]
+			},
+			{
+				"img_n": 10,
+				"tile_size": 10,
+				"elapsed_times": [37.2282,37.2087,37.2336]
+			},
+			{
+				"img_n": 20,
+				"tile_size": 10,
+				"elapsed_times": [43.7719,43.7796,43.7361]
+			},
+			{
+				"img_n": 50,
+				"tile_size": 10,
+				"elapsed_times": [104.734,104.554,104.59]
+			},
+			{
+				"img_n": 100,
+				"tile_size": 10,
+				"elapsed_times": [139.469,139.596,139.219]
+			},
+			{
+				"img_n": 200,
+				"tile_size": 10,
+				"elapsed_times": [220.392,219.805,220.029]
+			}
+		]
+	}
+}

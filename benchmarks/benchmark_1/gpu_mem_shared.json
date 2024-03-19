@@ -1,22 +1,31 @@
 {
 	"gpu_mem_shared_version": {
-		"iter_for_reliability": 5,
+		"iter_for_reliability": 3,
 		"test_performed": [
 			{
-				"img_n": 1,
-				"elapsed_times": [0.0265621,0.026213,0.0260256,0.025877,0.0261163]
+				"img_n": 10,
+				"tile_size": 5,
+				"elapsed_times": [0.277835,0.272074,0.277314]
 			},
 			{
 				"img_n": 10,
-				"elapsed_times": [2.03518,2.03359,2.03243,2.03599,2.03344]
+				"tile_size": 10,
+				"elapsed_times": [0.330802,0.338609,0.330894]
 			},
 			{
-				"img_n": 100,
-				"elapsed_times": [10.3073,10.4234,10.3115,10.3055,10.3084]
+				"img_n": 10,
+				"tile_size": 20,
+				"elapsed_times": [0.651253,0.649893,0.650082]
 			},
 			{
-				"img_n": 1000,
-				"elapsed_times": [90.219,90.1945,90.4798,90.1873,90.2918]
+				"img_n": 10,
+				"tile_size": 40,
+				"elapsed_times": [1.91184,1.91065,1.9133]
+			},
+			{
+				"img_n": 10,
+				"tile_size": 80,
+				"elapsed_times": [6.95191,6.99438,7.0274]
 			}
 		]
 	}

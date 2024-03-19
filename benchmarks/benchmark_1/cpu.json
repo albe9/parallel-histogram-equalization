@@ -1,31 +1,31 @@
 {
-	"gpu_version": {
+	"cpu_version": {
 		"iter_for_reliability": 3,
 		"test_performed": [
 			{
 				"img_n": 10,
 				"tile_size": 5,
-				"elapsed_times": [0.625945,0.270774,0.269232]
+				"elapsed_times": [27.2454,27.2367,27.2229]
 			},
 			{
 				"img_n": 10,
 				"tile_size": 10,
-				"elapsed_times": [0.342503,0.326191,0.3291]
+				"elapsed_times": [37.2998,37.1793,37.2629]
 			},
 			{
 				"img_n": 10,
 				"tile_size": 20,
-				"elapsed_times": [0.648359,0.649817,0.648268]
+				"elapsed_times": [66.7608,66.7567,67.0602]
 			},
 			{
 				"img_n": 10,
 				"tile_size": 40,
-				"elapsed_times": [1.91726,1.92189,1.92411]
+				"elapsed_times": [182.591,182.681,182.452]
 			},
 			{
 				"img_n": 10,
 				"tile_size": 80,
-				"elapsed_times": [6.96992,7.0178,7.00747]
+				"elapsed_times": [658.418,656.88,657.184]
 			}
 		]
 	}

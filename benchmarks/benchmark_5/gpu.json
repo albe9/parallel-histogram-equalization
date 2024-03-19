@@ -1,0 +1,17 @@
+{
+	"gpu_version": {
+		"iter_for_reliability": 1,
+		"test_performed": [
+			{
+				"img_n": 1,
+				"tile_size": 10,
+				"elapsed_times": [0.61626]
+			},
+			{
+				"img_n": 1,
+				"tile_size": 20,
+				"elapsed_times": [0.0122742]
+			}
+		]
+	}
+}

@@ -1,0 +1,37 @@
+{
+	"gpu_version": {
+		"iter_for_reliability": 3,
+		"test_performed": [
+			{
+				"img_n": 1,
+				"tile_size": 10,
+				"elapsed_times": [0.257899,0.00480798,0.00494879]
+			},
+			{
+				"img_n": 10,
+				"tile_size": 10,
+				"elapsed_times": [0.399473,0.350247,0.338294]
+			},
+			{
+				"img_n": 20,
+				"tile_size": 10,
+				"elapsed_times": [0.398815,0.398688,0.39716]
+			},
+			{
+				"img_n": 50,
+				"tile_size": 10,
+				"elapsed_times": [1.0193,1.01857,1.02246]
+			},
+			{
+				"img_n": 100,
+				"tile_size": 10,
+				"elapsed_times": [1.43518,1.42881,1.43222]
+			},
+			{
+				"img_n": 200,
+				"tile_size": 10,
+				"elapsed_times": [2.61276,2.26794,2.27878]
+			}
+		]
+	}
+}
