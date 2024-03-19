@@ -533,45 +533,50 @@ void benchmarks(benchmark_config config, std::string json_out_folder)
     if(config.cpu_version.first)
     {
         std::cout << "CPU BENCHMARKS:\n";
-        make_single_benchmark("cpu_version", "cpu_", json_out_folder + "cpu.json", config.cpu_version.second, config.iter_for_reliability);
+        make_single_benchmark("cpu_version", "cpu_", json_out_folder + "cpu.json",
+         config.cpu_version.second.first, config.cpu_version.second.second, config.iter_for_reliability);
     }
 
     // GPU
     if(config.gpu_version.first)
     {
         std::cout << "GPU BENCHMARKS:\n";
-        make_single_benchmark("gpu_version", "gpu_", json_out_folder + "gpu.json", config.gpu_version.second, config.iter_for_reliability);
+        make_single_benchmark("gpu_version", "gpu_", json_out_folder + "gpu.json",
+         config.gpu_version.second.first, config.gpu_version.second.second, config.iter_for_reliability);
     }
 
     // GPU shared memory
     if(config.gpu_mem_shared_version.first)
     {
         std::cout << "GPU SHARED MEMORY BENCHMARKS:\n";
-        make_single_benchmark("gpu_mem_shared_version", "gpu_mem_shared_", json_out_folder + "gpu_mem_shared.json", config.gpu_mem_shared_version.second, config.iter_for_reliability);
+        make_single_benchmark("gpu_mem_shared_version", "gpu_mem_shared_", json_out_folder + "gpu_mem_shared.json",
+         config.gpu_mem_shared_version.second.first, config.gpu_mem_shared_version.second.second, config.iter_for_reliability);
     }
 
 }
 
 int main()
 {
-    
 
-    benchmark_config config1={
-        .iter_for_reliability = 5,
-        .cpu_version =            {false, {}},
-        .gpu_version =            {true, {1, 10, 100, 1000}},
-        .gpu_mem_shared_version = {true, {1, 10, 100, 1000}}
+    // benchmark_config config4={
+    //         .iter_for_reliability = 3,
+    //         .cpu_version =            {false, {{}, {}}},
+    //         .gpu_version =            {true, {{10, 100, 1000}, {10, 10, 10}}},
+    //         .gpu_mem_shared_version = {true, {{10, 100, 1000}, {10, 10, 10}}}
+    // };
+
+    // benchmarks(config4, "./../benchmarks/benchmark_4/");
+
+    benchmark_config config5={
+            .iter_for_reliability = 1,
+            .cpu_version =            {false, {{}, {}}},
+            .gpu_version =            {true, {{1,1}, {10,20}}},
+            .gpu_mem_shared_version = {true, {{1,1}, {10,20}}}
     };
+
+    benchmarks(config5, "./../benchmarks/benchmark_5/");
+
     
-    benchmark_config config2={
-            .iter_for_reliability = 5,
-            .cpu_version =            {true, {1, 10, 100, 1000}},
-            .gpu_version =            {false, {}},
-            .gpu_mem_shared_version = {false, {}}
-        };
-
-    benchmarks(config1, "./../benchmarks/benchmark_2/");
-
     // auto start_time = std::chrono::high_resolution_clock::now();
     // auto end_time = std::chrono::high_resolution_clock::now();
     // auto elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);

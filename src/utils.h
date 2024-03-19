@@ -131,16 +131,16 @@ void single_core_clahe(uint32_t clip_limit, uint32_t tileRadius, std::string in_
 typedef struct
 {
     uint32_t iter_for_reliability;
-    std::pair<bool, std::vector<uint32_t>> cpu_version;
-    std::pair<bool, std::vector<uint32_t>> gpu_version;
-    std::pair<bool, std::vector<uint32_t>> gpu_mem_shared_version;
+    std::pair<bool, std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> cpu_version;
+    std::pair<bool, std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> gpu_version;
+    std::pair<bool, std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> gpu_mem_shared_version;
 }benchmark_config;
 
 typedef struct
 {
     uint32_t iter_for_reliability;
     std::string benchmark_type;
-    std::map<uint32_t, std::vector<double>> elapsed_times;
+    std::vector<std::tuple<uint32_t, uint32_t, std::vector<double>>> benchmarks_info;
 
     void toJson(std::string json_out_path)
     {
@@ -151,22 +151,23 @@ typedef struct
         json_file << "\t\t\"iter_for_reliability\": " << iter_for_reliability << ",\n";
         json_file << "\t\t\"test_performed\": [\n";
 
-        for(auto pair : elapsed_times)
+        for(auto benchmark_info : benchmarks_info)
         {
             json_file << "\t\t\t{\n";
-            json_file << "\t\t\t\t\"img_n\": " << pair.first << ",\n";
+            json_file << "\t\t\t\t\"img_n\": " << std::get<0>(benchmark_info) << ",\n";
+            json_file << "\t\t\t\t\"tile_size\": " << std::get<1>(benchmark_info) << ",\n";
             json_file << "\t\t\t\t\"elapsed_times\": [";
-            for(auto time : pair.second)
+            for(auto time : std::get<2>(benchmark_info))
             {
                 json_file << time;
-                if (time != *pair.second.rbegin())
+                if (time != *std::get<2>(benchmark_info).rbegin())
                 {
                     json_file << ",";
                 } 
             }     
             json_file << "]\n";
             json_file << "\t\t\t}";
-            if (pair != *elapsed_times.rbegin())
+            if (benchmark_info != *benchmarks_info.rbegin())
             {
                 json_file << ",";
             } 
@@ -179,7 +180,7 @@ typedef struct
     }
 }benchmark_data;
 
-void make_single_benchmark(std::string benchmark_type,std::string media_out_prefix, std::string json_out_path, std::vector<uint32_t> img_limits, uint32_t iter_for_reliability)
+void make_single_benchmark(std::string benchmark_type,std::string media_out_prefix, std::string json_out_path, std::vector<uint32_t> img_limits, std::vector<uint32_t> tile_sizes, uint32_t iter_for_reliability)
 {
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> elapsed_time;
@@ -196,8 +197,9 @@ void make_single_benchmark(std::string benchmark_type,std::string media_out_pref
     {
         if (img_limit > img_count)
         {
-            img_limit = img_count;
+            img_limit = img_count - 1;
         }
+        std::vector<double> elapsed_times;
         for(uint32_t reliability_index=0; reliability_index<iter_for_reliability; reliability_index++)
         {
             start_time = std::chrono::high_resolution_clock::now();
@@ -209,15 +211,15 @@ void make_single_benchmark(std::string benchmark_type,std::string media_out_pref
 
                     if(benchmark_type == "cpu_version")
                     {
-                        single_core_clahe(4, 40, in_img_path, out_img_path);
+                        single_core_clahe(4, tile_sizes[bench_counter], in_img_path, out_img_path);
                     }
                     else if(benchmark_type == "gpu_version")
                     {
-                        parallel_clahe(4, 40, in_img_path, out_img_path);
+                        parallel_clahe(4, tile_sizes[bench_counter], in_img_path, out_img_path);
                     }
                     else if(benchmark_type == "gpu_mem_shared_version")
                     {
-                        parallel_clahe_shared_mem(4, 40, in_img_path, out_img_path);
+                        parallel_clahe_shared_mem(4, tile_sizes[bench_counter], in_img_path, out_img_path);
                     }
                     
                     if(img_counter == img_count - 1)
@@ -237,8 +239,9 @@ void make_single_benchmark(std::string benchmark_type,std::string media_out_pref
             }
             end_time = std::chrono::high_resolution_clock::now();
             elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-            timing_data.elapsed_times[img_limit].push_back(elapsed_time.count());
+            elapsed_times.push_back(elapsed_time.count());
         }
+        timing_data.benchmarks_info.push_back({img_limit, tile_sizes[bench_counter], elapsed_times});
         bench_counter++;
     }
     timing_data.toJson(json_out_path);
